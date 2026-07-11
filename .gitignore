@@ -16,6 +16,9 @@ vcs.xml
 *.lst
 workspace.xml
 jsoup*.xml
+*.classpath
+*.project
+.idea/
 
 
 # Mobile Tools for Java (J2ME)
