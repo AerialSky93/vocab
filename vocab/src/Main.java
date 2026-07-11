@@ -1,11 +1,11 @@
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 
 public class Main {
     public static void main(String[] args) throws IOException {
-
-        String verbData = "たのしい";
+        System.setOut(new PrintStream(System.out, true, StandardCharsets.UTF_8));
+        String verbData = "楽しい";
         JLearnAppVerbHelper verbHelper = new JLearnAppVerbHelper();
         verbHelper.iterateList(verbData);
     }

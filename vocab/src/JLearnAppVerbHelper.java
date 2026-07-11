@@ -15,16 +15,24 @@ public class JLearnAppVerbHelper {
 
     public final String BASE_URL = "https://jlearn.net/dictionary/";
 
+    private static final Pattern CONJUGATION_PATTERN = Pattern.compile(
+            "<div class=\"jpn text125\">(.*?)</div>(?:\\s*<div class=\"jpn\">(.*?)</div>)?(?:\\s*<div class=\"romaji\">(.*?)</div>)?",
+            Pattern.DOTALL);
+    private static final Pattern ENTITY_PATTERN = Pattern.compile("&#(x?[0-9A-Fa-f]+);|&([A-Za-z]+);");
+
     // Fetches the HTML content for the JLearn dictionary page.
     public String getURLString(String word) throws Exception {
         String encodedWord = URLEncoder.encode(word, StandardCharsets.UTF_8);
-        URL url = new URL(BASE_URL + encodedWord);
+        String requestUrl = BASE_URL + encodedWord;
+        System.out.println("Reading from: " + requestUrl + " (verb: " + word + ")");
+        URL url = new URL(requestUrl);
         HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
         con.setRequestMethod("GET");
         con.setRequestProperty("Content-Type", "text/html");
-        con.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+        con.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
-        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8));
         StringBuilder content = new StringBuilder();
         String inputLine;
         while ((inputLine = in.readLine()) != null) {
@@ -34,8 +42,20 @@ public class JLearnAppVerbHelper {
         return content.toString();
     }
 
+    private static class ConjugationValue {
+        private final String written;
+        private final String kana;
+        private final String romaji;
+
+        private ConjugationValue(String written, String kana, String romaji) {
+            this.written = written;
+            this.kana = kana;
+            this.romaji = romaji;
+        }
+    }
+
     // Extracts all visible conjugation values in a tense row.
-    private List<String> getTenseValues(String htmlContent, String tenseLabel) {
+    private List<ConjugationValue> getTenseValues(String htmlContent, String tenseLabel) {
         int tenseIndex = htmlContent.indexOf("<b>" + tenseLabel + "</b>");
         if (tenseIndex == -1) {
             return List.of();
@@ -46,24 +66,89 @@ public class JLearnAppVerbHelper {
                 ? htmlContent.substring(tenseIndex)
                 : htmlContent.substring(tenseIndex, nextRowIndex);
 
-        List<String> values = new ArrayList<>();
-        Matcher matcher = Pattern.compile("<div class=\"jpn text125\">(.*?)</div>", Pattern.DOTALL).matcher(tenseBlock);
+        List<ConjugationValue> values = new ArrayList<>();
+        Matcher matcher = CONJUGATION_PATTERN.matcher(tenseBlock);
         while (matcher.find()) {
-            values.add(cleanHtml(matcher.group(1)));
+            values.add(new ConjugationValue(
+                    cleanHtml(matcher.group(1)),
+                    cleanHtml(matcher.group(2)),
+                    cleanHtml(matcher.group(3))));
         }
         return values;
     }
 
     public String getVerbValue(String htmlContent, String tenseLabel, int valueIndex) {
-        List<String> values = getTenseValues(htmlContent, tenseLabel);
+        List<ConjugationValue> values = getTenseValues(htmlContent, tenseLabel);
         if (valueIndex < 0 || valueIndex >= values.size()) {
             return "Not found";
         }
-        return values.get(valueIndex);
+        return formatValue(values.get(valueIndex));
     }
 
     private String cleanHtml(String value) {
-        return value.replaceAll("<.*?>", "").trim();
+        if (value == null) {
+            return "";
+        }
+        String withoutTags = value.replaceAll("<.*?>", "").trim();
+        return decodeHtmlEntities(withoutTags);
+    }
+
+    private String formatValue(ConjugationValue value) {
+        if (!value.romaji.isEmpty()) {
+            return value.written + " [" + value.romaji + "]";
+        }
+        if (!value.kana.isEmpty() && !value.kana.equals(value.written)) {
+            return value.written + " [" + value.kana + "]";
+        }
+        return value.written;
+    }
+
+    private String decodeHtmlEntities(String text) {
+        Matcher matcher = ENTITY_PATTERN.matcher(text);
+        StringBuilder decoded = new StringBuilder();
+        int lastMatchEnd = 0;
+
+        while (matcher.find()) {
+            decoded.append(text, lastMatchEnd, matcher.start());
+            String numericEntity = matcher.group(1);
+            String namedEntity = matcher.group(2);
+
+            if (numericEntity != null) {
+                decoded.append(decodeNumericEntity(numericEntity));
+            } else {
+                decoded.append(decodeNamedEntity(namedEntity, matcher.group(0)));
+            }
+            lastMatchEnd = matcher.end();
+        }
+
+        decoded.append(text.substring(lastMatchEnd));
+        return decoded.toString();
+    }
+
+    private String decodeNumericEntity(String entityValue) {
+        try {
+            int codePoint;
+            if (entityValue.startsWith("x") || entityValue.startsWith("X")) {
+                codePoint = Integer.parseInt(entityValue.substring(1), 16);
+            } else {
+                codePoint = Integer.parseInt(entityValue, 10);
+            }
+            return new String(Character.toChars(codePoint));
+        } catch (IllegalArgumentException e) {
+            return "&#" + entityValue + ";";
+        }
+    }
+
+    private String decodeNamedEntity(String entityName, String fallback) {
+        return switch (entityName) {
+            case "amp" -> "&";
+            case "lt" -> "<";
+            case "gt" -> ">";
+            case "quot" -> "\"";
+            case "apos" -> "'";
+            case "nbsp" -> " ";
+            default -> fallback;
+        };
     }
 
     // Iterates through a list of words and prints present/past forms.
