@@ -16,7 +16,7 @@ public class JLearnAppVerbHelper {
     public final String BASE_URL = "https://jlearn.net/dictionary/";
 
     private static final Pattern CONJUGATION_PATTERN = Pattern.compile(
-            "<div class=\"jpn text125\">(.*?)</div>(?:\\s*<div class=\"jpn\">(.*?)</div>)?(?:\\s*<div class=\"romaji\">(.*?)</div>)?",
+            "<div class=\"jpn text125\">(.*?)</div>",
             Pattern.DOTALL);
     private static final Pattern ENTITY_PATTERN = Pattern.compile("&#(x?[0-9A-Fa-f]+);|&([A-Za-z]+);");
 
@@ -42,20 +42,8 @@ public class JLearnAppVerbHelper {
         return content.toString();
     }
 
-    private static class ConjugationValue {
-        private final String written;
-        private final String kana;
-        private final String romaji;
-
-        private ConjugationValue(String written, String kana, String romaji) {
-            this.written = written;
-            this.kana = kana;
-            this.romaji = romaji;
-        }
-    }
-
     // Extracts all visible conjugation values in a tense row.
-    private List<ConjugationValue> getTenseValues(String htmlContent, String tenseLabel) {
+    private List<String> getTenseValues(String htmlContent, String tenseLabel) {
         int tenseIndex = htmlContent.indexOf("<b>" + tenseLabel + "</b>");
         if (tenseIndex == -1) {
             return List.of();
@@ -66,23 +54,20 @@ public class JLearnAppVerbHelper {
                 ? htmlContent.substring(tenseIndex)
                 : htmlContent.substring(tenseIndex, nextRowIndex);
 
-        List<ConjugationValue> values = new ArrayList<>();
+        List<String> values = new ArrayList<>();
         Matcher matcher = CONJUGATION_PATTERN.matcher(tenseBlock);
         while (matcher.find()) {
-            values.add(new ConjugationValue(
-                    cleanHtml(matcher.group(1)),
-                    cleanHtml(matcher.group(2)),
-                    cleanHtml(matcher.group(3))));
+            values.add(cleanHtml(matcher.group(1)));
         }
         return values;
     }
 
     public String getVerbValue(String htmlContent, String tenseLabel, int valueIndex) {
-        List<ConjugationValue> values = getTenseValues(htmlContent, tenseLabel);
+        List<String> values = getTenseValues(htmlContent, tenseLabel);
         if (valueIndex < 0 || valueIndex >= values.size()) {
             return "Not found";
         }
-        return formatValue(values.get(valueIndex));
+        return values.get(valueIndex);
     }
 
     private String cleanHtml(String value) {
@@ -91,16 +76,6 @@ public class JLearnAppVerbHelper {
         }
         String withoutTags = value.replaceAll("<.*?>", "").trim();
         return decodeHtmlEntities(withoutTags);
-    }
-
-    private String formatValue(ConjugationValue value) {
-        if (!value.romaji.isEmpty()) {
-            return value.written + " [" + value.romaji + "]";
-        }
-        if (!value.kana.isEmpty() && !value.kana.equals(value.written)) {
-            return value.written + " [" + value.kana + "]";
-        }
-        return value.written;
     }
 
     private String decodeHtmlEntities(String text) {
