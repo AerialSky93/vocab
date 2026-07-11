@@ -24,7 +24,6 @@ public class JLearnAppVerbHelper {
     public String getURLString(String word) throws Exception {
         String encodedWord = URLEncoder.encode(word, StandardCharsets.UTF_8);
         String requestUrl = BASE_URL + encodedWord;
-        System.out.println("Reading from: " + requestUrl + " (verb: " + word + ")");
         URL url = new URL(requestUrl);
         HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
         con.setRequestMethod("GET");
