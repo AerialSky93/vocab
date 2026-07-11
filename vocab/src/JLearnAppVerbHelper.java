@@ -14,16 +14,37 @@ import java.util.regex.Pattern;
 public class JLearnAppVerbHelper {
 
     public final String BASE_URL = "https://jlearn.net/dictionary/";
+    private static final String CONJUGATIONS_MARKER = "<div class=\"conjugations\">";
 
     private static final Pattern CONJUGATION_PATTERN = Pattern.compile(
             "<div class=\"jpn text125\">(.*?)</div>",
             Pattern.DOTALL);
     private static final Pattern ENTITY_PATTERN = Pattern.compile("&#(x?[0-9A-Fa-f]+);|&([A-Za-z]+);");
+    private static final Pattern PRIMARY_ENTRY_LINK_PATTERN = Pattern.compile(
+            "<a href=\"(/dictionary/[^\"]+)\" class=\"jpn kanji\">");
+    private static final Pattern DROPDOWN_ENTRY_LINK_PATTERN = Pattern.compile(
+            "<a class=\"dropdown-item\" href=\"(/dictionary/[^\"]+)\">View dictionary entry</a>");
 
     // Fetches the HTML content for the JLearn dictionary page.
     public String getURLString(String word) throws Exception {
         String encodedWord = URLEncoder.encode(word, StandardCharsets.UTF_8);
         String requestUrl = BASE_URL + encodedWord;
+        String htmlContent = getContentFromUrl(requestUrl);
+
+        if (hasConjugations(htmlContent)) {
+            return htmlContent;
+        }
+
+        String entryUrl = getEntryUrl(htmlContent);
+        if (entryUrl == null) {
+            return htmlContent;
+        }
+
+        String entryHtml = getContentFromUrl(entryUrl);
+        return hasConjugations(entryHtml) ? entryHtml : htmlContent;
+    }
+
+    private String getContentFromUrl(String requestUrl) throws Exception {
         URL url = new URL(requestUrl);
         HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
         con.setRequestMethod("GET");
@@ -39,6 +60,23 @@ public class JLearnAppVerbHelper {
         }
         in.close();
         return content.toString();
+    }
+
+    private boolean hasConjugations(String htmlContent) {
+        return htmlContent.contains(CONJUGATIONS_MARKER);
+    }
+
+    private String getEntryUrl(String htmlContent) {
+        Matcher matcher = PRIMARY_ENTRY_LINK_PATTERN.matcher(htmlContent);
+        if (matcher.find()) {
+            return "https://jlearn.net" + decodeHtmlEntities(matcher.group(1));
+        }
+
+        matcher = DROPDOWN_ENTRY_LINK_PATTERN.matcher(htmlContent);
+        if (!matcher.find()) {
+            return null;
+        }
+        return "https://jlearn.net" + decodeHtmlEntities(matcher.group(1));
     }
 
     // Extracts all visible conjugation values in a tense row.
