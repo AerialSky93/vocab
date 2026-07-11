@@ -1,10 +1,15 @@
 import javax.net.ssl.HttpsURLConnection;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -14,17 +19,47 @@ import java.util.regex.Pattern;
 public class TakobotoJapaneseAppVerbHelper {
 
     public final String BASE_URL = "https://takoboto.jp/?q=";
+    public final String DETAIL_URL = "https://takoboto.jp/?w=";
 
     private static final Pattern CONJUGATION_VALUE_PATTERN = Pattern.compile(
             "<span style=\"font-size:19px\">\\s*(.*?)\\s*<span style=\"color:#A0A0A0\">",
             Pattern.DOTALL);
     private static final Pattern ENTITY_PATTERN = Pattern.compile("&#(x?[0-9A-Fa-f]+);|&([A-Za-z]+);");
+    private static final Pattern RESULT_WORD_ID_PATTERN = Pattern.compile("ResultWordId0\" value=\"(\\d+)\"");
+    private static final TrustManager[] TRUST_ALL_CERTS = new TrustManager[] {
+            new X509TrustManager() {
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) {
+                }
+
+                @Override
+                public X509Certificate[] getAcceptedIssuers() {
+                    return new X509Certificate[0];
+                }
+            }
+    };
 
     // Fetches the HTML content for the Takoboto search page.
     public String getURLString(String word) throws Exception {
         String encodedWord = URLEncoder.encode(word, StandardCharsets.UTF_8);
-        URL url = new URL(BASE_URL + encodedWord);
+        return getContentFromUrl(BASE_URL + encodedWord);
+    }
+
+    private String getDetailURLString(String wordId) throws Exception {
+        return getContentFromUrl(DETAIL_URL + wordId);
+    }
+
+    private String getContentFromUrl(String requestUrl) throws Exception {
+        URL url = new URL(requestUrl);
         HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, TRUST_ALL_CERTS, new SecureRandom());
+        con.setSSLSocketFactory(sslContext.getSocketFactory());
+        con.setHostnameVerifier((hostname, session) -> true);
         con.setRequestMethod("GET");
         con.setRequestProperty("Content-Type", "text/html");
         con.setRequestProperty("User-Agent",
@@ -40,7 +75,16 @@ public class TakobotoJapaneseAppVerbHelper {
         return content.toString();
     }
 
-    // Extracts visible conjugation values from a Takoboto conjugation card.
+    private String getDetailHtml(String word) throws Exception {
+        String searchHtml = getURLString(word);
+        Matcher matcher = RESULT_WORD_ID_PATTERN.matcher(searchHtml);
+        if (!matcher.find()) {
+            return searchHtml;
+        }
+        return getDetailURLString(matcher.group(1));
+    }
+
+    // Extracts conjugation values from a Takoboto conjugation card.
     private List<String> getTenseValues(String htmlContent, String tenseLabel) {
         String conjugatedFormsSection = getConjugatedFormsSection(htmlContent);
         int labelIndex = conjugatedFormsSection.indexOf(tenseLabel);
@@ -48,9 +92,7 @@ public class TakobotoJapaneseAppVerbHelper {
             return List.of();
         }
 
-        int nextCardIndex = conjugatedFormsSection.indexOf(
-                "<span style=\"display:inline-block;vertical-align:top",
-                labelIndex + tenseLabel.length());
+        int nextCardIndex = findNextCardIndex(conjugatedFormsSection, labelIndex + tenseLabel.length());
         String tenseBlock = nextCardIndex == -1
                 ? conjugatedFormsSection.substring(labelIndex)
                 : conjugatedFormsSection.substring(labelIndex, nextCardIndex);
@@ -61,6 +103,23 @@ public class TakobotoJapaneseAppVerbHelper {
             values.add(cleanHtml(matcher.group(1)));
         }
         return values;
+    }
+
+    private int findNextCardIndex(String conjugatedFormsSection, int searchStartIndex) {
+        int nextVisibleCardIndex = conjugatedFormsSection.indexOf(
+                "<span style=\"display:inline-block;vertical-align:top",
+                searchStartIndex);
+        int nextHiddenCardIndex = conjugatedFormsSection.indexOf(
+                "<span style=\"display:none;vertical-align:top",
+                searchStartIndex);
+
+        if (nextVisibleCardIndex == -1) {
+            return nextHiddenCardIndex;
+        }
+        if (nextHiddenCardIndex == -1) {
+            return nextVisibleCardIndex;
+        }
+        return Math.min(nextVisibleCardIndex, nextHiddenCardIndex);
     }
 
     private String getConjugatedFormsSection(String htmlContent) {
@@ -145,13 +204,14 @@ public class TakobotoJapaneseAppVerbHelper {
         return wordItem.split("[/\\uFF0F]")[0].trim();
     }
 
-    // Iterates through a list of words and prints the same four forms used by JLearn.
+    // Iterates through a list of words and prints the same four forms used by
+    // JLearn.
     public void iterateList(String wordData) {
         List<String> wordList = Arrays.asList(wordData.split("\\s*,\\s*"));
         for (String wordItem : wordList) {
             String htmlContent;
             try {
-                htmlContent = getURLString(normalizeSearchWord(wordItem));
+                htmlContent = getDetailHtml(normalizeSearchWord(wordItem));
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
