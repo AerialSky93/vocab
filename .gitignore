@@ -13,6 +13,8 @@ modules.xml
 uiDesigner.xml
 vcs.xml
 *.iml
+*.lst
+workspace.xml
 jsoup*.xml
 
 
