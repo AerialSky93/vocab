@@ -138,7 +138,9 @@ public class JLearnAppVerbHelper {
             }
 
             String polite = getVerbValue(htmlContent, "Present Indicative", 1);
-            String negativePolite = getVerbValue(htmlContent, "Present Indicative", 3);
+            // JLearn lists two negative-polite alternatives in the same cell.
+            // Use the second one (e.g. 楽しくないです) instead of 楽しくありません.
+            String negativePolite = getVerbValue(htmlContent, "Present Indicative", 4);
             String past = getVerbValue(htmlContent, "Past Indicative", 0);
             String negativePast = getVerbValue(htmlContent, "Past Indicative", 2);
 
