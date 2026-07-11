@@ -126,7 +126,7 @@ public class JLearnAppVerbHelper {
         };
     }
 
-    // Iterates through a list of words and prints present/past forms.
+    // Iterates through a list of words and prints the requested conjugation forms.
     public void iterateList(String wordData) {
         List<String> wordList = Arrays.asList(wordData.split("\\s*,\\s*"));
         for (String wordItem : wordList) {
@@ -137,16 +137,16 @@ public class JLearnAppVerbHelper {
                 throw new RuntimeException(e);
             }
 
-            String presentPlain = getVerbValue(htmlContent, "Present Indicative", 0);
-            String presentPolite = getVerbValue(htmlContent, "Present Indicative", 1);
-            String pastPlain = getVerbValue(htmlContent, "Past Indicative", 0);
-            String pastPolite = getVerbValue(htmlContent, "Past Indicative", 1);
+            String polite = getVerbValue(htmlContent, "Present Indicative", 1);
+            String negativePolite = getVerbValue(htmlContent, "Present Indicative", 3);
+            String past = getVerbValue(htmlContent, "Past Indicative", 0);
+            String negativePast = getVerbValue(htmlContent, "Past Indicative", 2);
 
             System.out.println(wordItem + ",\n" +
-                    presentPlain + ",\n" +
-                    presentPolite + ",\n" +
-                    pastPlain + ",\n" +
-                    pastPolite + ",");
+                    polite + ",\n" +
+                    negativePolite + ",\n" +
+                    past + ",\n" +
+                    negativePast + ",");
         }
     }
 }
