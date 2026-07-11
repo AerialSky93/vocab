@@ -8,6 +8,8 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Arrays;
+import java.util.List;
 
 public class VerbHelper {
 
@@ -41,5 +43,18 @@ public class VerbHelper {
         return finalValue;
     }
 
-
+    public void iterateList(String verbData) throws IOException {
+        List<String> verbList = Arrays.asList(verbData.split("\\s*,\\s*"));
+        String commaType = ",\n";
+        for (String verbItem : verbList) {
+            String htmlContent = getURLString(verbItem);
+            String test1 = getVerbValue(htmlContent, "Declarative Present", "informal high") + commaType;
+            String test2 = getVerbValue(htmlContent, "Declarative Present", "informal low") + commaType;
+            String test3 = getVerbValue(htmlContent, "Declarative Past", "informal high") + commaType;
+            String test4 = getVerbValue(htmlContent, "Declarative Past", "informal low") + commaType;
+            String test5 = getVerbValue(htmlContent, "Declarative Future", "informal high") + ",";
+            //String test6 = verbHelper.getVerbValue(htmlContent, "Declarative Present", " formal high") + ",";
+            System.out.println(verbItem + ",\n" + test1 + test2 + test3 + test4 + test5);
+        }
+    }
 }
