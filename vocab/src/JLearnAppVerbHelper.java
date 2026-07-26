@@ -1,7 +1,10 @@
 import javax.net.ssl.HttpsURLConnection;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -45,21 +48,40 @@ public class JLearnAppVerbHelper {
     }
 
     private String getContentFromUrl(String requestUrl) throws Exception {
-        URL url = new URL(requestUrl);
-        HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
-        con.setRequestMethod("GET");
-        con.setRequestProperty("Content-Type", "text/html");
-        con.setRequestProperty("User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
+        final int maxAttempts = 1;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            URL url = new URL(requestUrl);
+            HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
+            con.setRequestMethod("GET");
+            con.setRequestProperty("Content-Type", "text/html");
+            con.setRequestProperty("User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
-        BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8));
-        StringBuilder content = new StringBuilder();
-        String inputLine;
-        while ((inputLine = in.readLine()) != null) {
-            content.append(inputLine);
+            int status = con.getResponseCode();
+            if (status == 429) {
+                if (attempt == maxAttempts) {
+                    throw new IOException("Server returned HTTP response code: 429 for URL: " + requestUrl);
+                }
+                long waitMs = 5000L * attempt; // 5s, 10s, 15s, ...
+                System.err.println(
+                        "429 rate limited, sleeping " + waitMs + "ms (attempt " + attempt + "/" + maxAttempts + ")");
+                Thread.sleep(waitMs);
+                continue;
+            }
+            if (status != 200) {
+                throw new IOException("Server returned HTTP response code: " + status + " for URL: " + requestUrl);
+            }
+
+            BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8));
+            StringBuilder content = new StringBuilder();
+            String inputLine;
+            while ((inputLine = in.readLine()) != null) {
+                content.append(inputLine);
+            }
+            in.close();
+            return content.toString();
         }
-        in.close();
-        return content.toString();
+        throw new IOException("Failed to fetch URL: " + requestUrl);
     }
 
     private boolean hasConjugations(String htmlContent) {
@@ -69,14 +91,31 @@ public class JLearnAppVerbHelper {
     private String getEntryUrl(String htmlContent) {
         Matcher matcher = PRIMARY_ENTRY_LINK_PATTERN.matcher(htmlContent);
         if (matcher.find()) {
-            return "https://jlearn.net" + decodeHtmlEntities(matcher.group(1));
+            return toAbsoluteEncodedUrl(decodeHtmlEntities(matcher.group(1)));
         }
 
         matcher = DROPDOWN_ENTRY_LINK_PATTERN.matcher(htmlContent);
         if (!matcher.find()) {
             return null;
         }
-        return "https://jlearn.net" + decodeHtmlEntities(matcher.group(1));
+        return toAbsoluteEncodedUrl(decodeHtmlEntities(matcher.group(1)));
+    }
+
+    // Java's URLConnection rejects raw non-ASCII paths (HTTP 400); percent-encode
+    // them.
+    private String toAbsoluteEncodedUrl(String path) {
+        try {
+            return new URI("https", "jlearn.net", path, null).toASCIIString();
+        } catch (URISyntaxException e) {
+            int slash = path.lastIndexOf('/');
+            if (slash < 0) {
+                return "https://jlearn.net/" + URLEncoder.encode(path, StandardCharsets.UTF_8).replace("+", "%20");
+            }
+            String prefix = path.substring(0, slash + 1);
+            String segment = path.substring(slash + 1);
+            return "https://jlearn.net" + prefix
+                    + URLEncoder.encode(segment, StandardCharsets.UTF_8).replace("+", "%20");
+        }
     }
 
     // Extracts all visible conjugation values in a tense row.
@@ -166,7 +205,8 @@ public class JLearnAppVerbHelper {
     // Iterates through a list of words and prints the requested conjugation forms.
     public void iterateList(String wordData) {
         List<String> wordList = Arrays.asList(wordData.split("\\s*,\\s*"));
-        for (String wordItem : wordList) {
+        for (int i = 0; i < wordList.size(); i++) {
+            String wordItem = wordList.get(i);
             String htmlContent;
             try {
                 htmlContent = getURLString(wordItem);
@@ -178,14 +218,24 @@ public class JLearnAppVerbHelper {
             // JLearn lists two negative-polite alternatives in the same cell.
             // Use the second one (e.g. 楽しくないです) instead of 楽しくありません.
             String negativePolite = getVerbValue(htmlContent, "Present Indicative", 4);
-            String past = getVerbValue(htmlContent, "Past Indicative", 0);
-            String negativePast = getVerbValue(htmlContent, "Past Indicative", 2);
+            String past = getVerbValue(htmlContent, "Past Indicative", 1);
+            String negativePast = getVerbValue(htmlContent, "Past Indicative", 4);
 
             System.out.println(wordItem + ",\n" +
                     polite + ",\n" +
                     negativePolite + ",\n" +
                     past + ",\n" +
                     negativePast + ",");
+
+            // Pause between words to reduce rate-limit hits.
+            if (i < wordList.size() - 1) {
+                try {
+                    Thread.sleep(1500);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(e);
+                }
+            }
         }
     }
 }
