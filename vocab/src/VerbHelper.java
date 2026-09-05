@@ -1,13 +1,10 @@
 import javax.net.ssl.HttpsURLConnection;
-import java.io.*;
-import java.net.MalformedURLException;
-import java.net.URL;
-
-import javax.net.ssl.HttpsURLConnection;
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 
@@ -16,31 +13,46 @@ public class VerbHelper {
     public final String VERB_URL = "https://api.verbix.com/conjugator/iv1/6153a464-b4f0-11ed-9ece-ee3761609078/1/8442/8442/";
 
     public String getURLString(String verb) throws IOException {
-        URL url = new URL("https://api.verbix.com/conjugator/iv1/6153a464-b4f0-11ed-9ece-ee3761609078/1/8442/8442/"+verb);
+        String encodedVerb = URLEncoder.encode(verb, StandardCharsets.UTF_8);
+        URL url = new URL(VERB_URL + encodedVerb);
         HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
         con.setRequestMethod("GET");
-        con.setRequestProperty("Content-Type", "application/json");
+        con.setRequestProperty("Accept", "application/json");
         con.setRequestProperty("User-Agent", "Mozilla/5.0");
+
+        int status = con.getResponseCode();
+        if (status != 200) {
+            throw new IOException("Server returned HTTP response code: " + status + " for URL: " + url);
+        }
+
         BufferedReader in = new BufferedReader(
-                new InputStreamReader(con.getInputStream()));
+                new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8));
         String inputLine;
-        StringBuffer content = new StringBuffer();
+        StringBuilder content = new StringBuilder();
         while ((inputLine = in.readLine()) != null) {
             content.append(inputLine);
         }
-        String htmlContent = content.toString();
         in.close();
-        return htmlContent;
+        return content.toString();
     }
+
     public String getVerbValue(String htmlContent, String verbType, String level) {
         int verbTypeIndex = htmlContent.indexOf(verbType);
+        if (verbTypeIndex == -1) {
+            return "Not found";
+        }
         int levelIndex = htmlContent.indexOf(level, verbTypeIndex);
-        int firstClosingSpan = htmlContent.indexOf("</span", levelIndex)+ 5;
-        int secondOpeningSpan = htmlContent.indexOf("<span", firstClosingSpan)+ 5;
-        int secondClosingSpan = htmlContent.indexOf(">", secondOpeningSpan)+1;
+        if (levelIndex == -1) {
+            return "Not found";
+        }
+        int firstClosingSpan = htmlContent.indexOf("</span", levelIndex) + 5;
+        int secondOpeningSpan = htmlContent.indexOf("<span", firstClosingSpan) + 5;
+        int secondClosingSpan = htmlContent.indexOf(">", secondOpeningSpan) + 1;
         int endingQuote = htmlContent.indexOf("<", secondClosingSpan);
-        String finalValue = htmlContent.substring(secondClosingSpan,endingQuote);
-        return finalValue;
+        if (secondClosingSpan <= 0 || endingQuote <= secondClosingSpan) {
+            return "Not found";
+        }
+        return htmlContent.substring(secondClosingSpan, endingQuote);
     }
 
     public void iterateList(String verbData) throws IOException {
@@ -53,7 +65,6 @@ public class VerbHelper {
             String test3 = getVerbValue(htmlContent, "Declarative Past", "informal high") + commaType;
             String test4 = getVerbValue(htmlContent, "Declarative Past", "informal low") + commaType;
             String test5 = getVerbValue(htmlContent, "Declarative Future", "informal high") + ",";
-            //String test6 = verbHelper.getVerbValue(htmlContent, "Declarative Present", " formal high") + ",";
             System.out.println(verbItem + ",\n" + test1 + test2 + test3 + test4 + test5);
         }
     }
