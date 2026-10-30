@@ -2,8 +2,9 @@ import javax.net.ssl.HttpsURLConnection;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -13,9 +14,9 @@ public class VerbHelper {
     public final String VERB_URL = "https://api.verbix.com/conjugator/iv1/6153a464-b4f0-11ed-9ece-ee3761609078/1/8442/8442/";
 
     public String getURLString(String verb) throws IOException {
-        String encodedVerb = URLEncoder.encode(verb, StandardCharsets.UTF_8);
-        URL url = new URL(VERB_URL + encodedVerb);
+        URL url = toVerbUrl(verb);
         HttpsURLConnection con = (HttpsURLConnection) url.openConnection();
+
         con.setRequestMethod("GET");
         con.setRequestProperty("Accept", "application/json");
         con.setRequestProperty("User-Agent", "Mozilla/5.0");
@@ -34,6 +35,15 @@ public class VerbHelper {
         }
         in.close();
         return content.toString();
+    }
+
+    private URL toVerbUrl(String verb) throws IOException {
+        try {
+            URI uri = URI.create(VERB_URL).resolve(new URI(null, null, verb, null));
+            return URI.create(uri.toASCIIString()).toURL();
+        } catch (URISyntaxException e) {
+            throw new IOException("Could not build conjugator URL for: " + verb, e);
+        }
     }
 
     public String getVerbValue(String htmlContent, String verbType, String level) {
